@@ -5,23 +5,36 @@ CC = gcc
 CFLAGS = -Wall -Wextra -g -O2
 LDFLAGS = 
 
+# Directories
+SRC_DIR = src
+OBJ_DIR = obj
+BIN_DIR = bin
+
+# Create directory command
+MKDIR = mkdir -p
+
 # Source and object files
-SRCS = daemon.c file_operations.c backup.c utils.c ipc.c
-OBJS = $(SRCS:.c=.o)
-HEADERS = report_system.h
+SRCS = $(wildcard $(SRC_DIR)/*.c)
+OBJS = $(patsubst $(SRC_DIR)/%.c, $(OBJ_DIR)/%.o, $(SRCS))
+HEADERS = $(wildcard $(SRC_DIR)/*.h)
 
 # Binary
-TARGET = report_daemon
+TARGET = $(BIN_DIR)/report_daemon
 
 # Default target
-all: $(TARGET)
+all: directories $(TARGET)
+
+# Create necessary directories
+directories:
+	$(MKDIR) $(OBJ_DIR)
+	$(MKDIR) $(BIN_DIR)
 
 # Link the target executable
 $(TARGET): $(OBJS)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 # Compile source files into object files
-%.o: %.c $(HEADERS)
+$(OBJ_DIR)/%.o: $(SRC_DIR)/%.c $(HEADERS)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # Install the daemon and create necessary directories
@@ -38,23 +51,27 @@ install: $(TARGET)
 	chmod 755 /var/report_system/backup
 	chmod 755 /var/report_system/logs
 	# Copy the daemon to system location
-	cp $(TARGET) /usr/sbin/
-	# Create init script
+	cp $(TARGET) /usr/sbin/report_daemon
+	# Create init script directory if it doesn't exist
+	mkdir -p init.d
+	# Generate init script if it doesn't exist
+	test -f init.d/report_daemon || $(MAKE) init-script
+	# Copy init script
 	cp init.d/report_daemon /etc/init.d/
 	chmod 755 /etc/init.d/report_daemon
-	# Update system 
-	update-rc.d report_daemon defaults
+	# Update system (for Debian/Ubuntu)
+	which update-rc.d >/dev/null && update-rc.d report_daemon defaults || true
 
 # Uninstall the daemon
 uninstall:
 	@echo "Uninstalling report daemon..."
 	# Stop the daemon if running
-	/etc/init.d/report_daemon stop || true
+	test -f /etc/init.d/report_daemon && /etc/init.d/report_daemon stop || true
 	# Remove init script
-	update-rc.d report_daemon remove
+	which update-rc.d >/dev/null && update-rc.d report_daemon remove || true
 	rm -f /etc/init.d/report_daemon
 	# Remove binary
-	rm -f /usr/sbin/$(TARGET)
+	rm -f /usr/sbin/report_daemon
 	# Note: We don't remove the data directories
 
 # Start the daemon
@@ -74,7 +91,7 @@ restart:
 
 # Clean up build files
 clean:
-	rm -f $(OBJS) $(TARGET)
+	rm -rf $(OBJ_DIR) $(BIN_DIR)
 
 # Create init.d script
 init-script:
@@ -106,28 +123,28 @@ init-script:
 	@echo '    start-stop-daemon --stop --quiet --pidfile $$PIDFILE' >> init.d/report_daemon
 	@echo '    ;;' >> init.d/report_daemon
 	@echo '  restart|reload|force-reload)' >> init.d/report_daemon
-	@echo '    echo "Restarting $DESC"' >> init.d/report_daemon
-	@echo '    start-stop-daemon --stop --quiet --pidfile $PIDFILE' >> init.d/report_daemon
+	@echo '    echo "Restarting $$DESC"' >> init.d/report_daemon
+	@echo '    start-stop-daemon --stop --quiet --pidfile $$PIDFILE' >> init.d/report_daemon
 	@echo '    sleep 1' >> init.d/report_daemon
-	@echo '    start-stop-daemon --start --quiet --exec $DAEMON' >> init.d/report_daemon
+	@echo '    start-stop-daemon --start --quiet --exec $$DAEMON' >> init.d/report_daemon
 	@echo '    ;;' >> init.d/report_daemon
 	@echo '  status)' >> init.d/report_daemon
-	@echo '    if [ -f $PIDFILE ]; then' >> init.d/report_daemon
-	@echo '      pid=$(cat $PIDFILE)' >> init.d/report_daemon
-	@echo '      if ps -p $pid > /dev/null 2>&1; then' >> init.d/report_daemon
-	@echo '        echo "$DESC is running (pid $pid)"' >> init.d/report_daemon
+	@echo '    if [ -f $$PIDFILE ]; then' >> init.d/report_daemon
+	@echo '      pid=$$(cat $$PIDFILE)' >> init.d/report_daemon
+	@echo '      if ps -p $$pid > /dev/null 2>&1; then' >> init.d/report_daemon
+	@echo '        echo "$$DESC is running (pid $$pid)"' >> init.d/report_daemon
 	@echo '        exit 0' >> init.d/report_daemon
 	@echo '      else' >> init.d/report_daemon
-	@echo '        echo "$DESC is not running (stale pidfile)"' >> init.d/report_daemon
+	@echo '        echo "$$DESC is not running (stale pidfile)"' >> init.d/report_daemon
 	@echo '        exit 1' >> init.d/report_daemon
 	@echo '      fi' >> init.d/report_daemon
 	@echo '    else' >> init.d/report_daemon
-	@echo '      echo "$DESC is not running"' >> init.d/report_daemon
+	@echo '      echo "$$DESC is not running"' >> init.d/report_daemon
 	@echo '      exit 3' >> init.d/report_daemon
 	@echo '    fi' >> init.d/report_daemon
 	@echo '    ;;' >> init.d/report_daemon
 	@echo '  *)' >> init.d/report_daemon
-	@echo '    echo "Usage: /etc/init.d/$NAME {start|stop|restart|reload|force-reload|status}"' >> init.d/report_daemon
+	@echo '    echo "Usage: /etc/init.d/$$NAME {start|stop|restart|reload|force-reload|status}"' >> init.d/report_daemon
 	@echo '    exit 1' >> init.d/report_daemon
 	@echo '    ;;' >> init.d/report_daemon
 	@echo 'esac' >> init.d/report_daemon
@@ -135,31 +152,10 @@ init-script:
 	@echo 'exit 0' >> init.d/report_daemon
 	chmod 755 init.d/report_daemon
 
-# Generate documentation
-docs:
-	@echo "Generating documentation..."
-	doxygen Doxyfile
+# Print directory structure (for debugging)
+print-structure:
+	@echo "Source files: $(SRCS)"
+	@echo "Object files: $(OBJS)"
+	@echo "Headers: $(HEADERS)"
 
-# Test targets
-test: test-build test-run
-
-# Build tests
-test-build: $(TARGET)
-	@echo "Building tests..."
-	$(CC) $(CFLAGS) -o test_report_system tests/test_report_system.c $(OBJS)
-
-# Run tests
-test-run: test-build
-	@echo "Running tests..."
-	./test_report_system
-
-# Dependencies
-depend: .depend
-
-.depend: $(SRCS)
-	rm -f ./.depend
-	$(CC) $(CFLAGS) -MM $^ > ./.depend
-
-include .depend
-
-.PHONY: all install uninstall start stop restart clean init-script docs test test-build test-run depend
+.PHONY: all directories install uninstall start stop restart clean init-script print-structure

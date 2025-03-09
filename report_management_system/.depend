@@ -1,0 +1,5 @@
+daemon.o: daemon.c report_system.h
+file_operations.o: file_operations.c report_system.h
+backup.o: backup.c
+utils.o: utils.c report_system.h
+ipc.o: ipc.c report_system.h
