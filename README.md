@@ -23,8 +23,8 @@ A daemon-based solution for managing department reports in a manufacturing compa
 
 1. Clone the repository or extract the archive:
    ```bash
-   git clone https://github.com/yourname/report-management.git
-   cd report-management
+   git clone https://github.com/itsJino/report-management.git
+   cd report_management_system
    ```
 
 2. Compile the daemon:
